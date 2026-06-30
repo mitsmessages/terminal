@@ -22,6 +22,7 @@ const State = {
   learnMode: true,
   showWatchlist: false,
   watchlist: JSON.parse(localStorage.getItem("terminal_watchlist")||"[]"),
+  compare: [],
 };
 
 function saveWatchlist(){ localStorage.setItem("terminal_watchlist", JSON.stringify(State.watchlist)); }
@@ -29,6 +30,12 @@ function toggleWatch(t){
   const i=State.watchlist.indexOf(t);
   if(i>=0) State.watchlist.splice(i,1); else State.watchlist.push(t);
   saveWatchlist(); render();
+}
+function toggleCompare(t){
+  const i=State.compare.indexOf(t);
+  if(i>=0){ State.compare.splice(i,1); }
+  else { if(State.compare.length>=5){ alert("You can compare up to 5 stocks at a time. Remove one first."); return; } State.compare.push(t); }
+  render();
 }
 
 fetch("data.json").then(r=>r.ok?r.json():Promise.reject()).then(d=>{
@@ -91,6 +98,7 @@ function renderHeader(){
       <div class="tabs">
         <button data-tab="stocks" class="${State.tab==='stocks'?'on':''}">Stocks</button>
         <button data-tab="sectors" class="${State.tab==='sectors'?'on':''}">Sectors &amp; cycles</button>
+        <button data-tab="compare" class="${State.tab==='compare'?'on':''}">Compare${State.compare.length?` (${State.compare.length})`:''}</button>
       </div>
       <button class="watchbtn" id="watchToggle">★ Watchlist (${State.watchlist.length})</button>
       <span class="livebadge ${State.live?'live':'sample'}">${State.live?'● LIVE · YAHOO':'● SAMPLE DATA'} · ${State.data.length} names</span>
@@ -124,6 +132,7 @@ function renderScreener(){
   <table class="grid">
     <thead><tr>
       <th></th>
+      <th></th>
       ${cols.map(([k,l])=>`<th class="${k==='t'?'left':''}" data-sort="${k}" style="${State.sort===k?'color:var(--accent)':''}">${l}</th>`).join("")}
       <th>5Q trend</th>
     </tr></thead>
@@ -132,6 +141,7 @@ function renderScreener(){
       rows.map(s=>`
         <tr class="row" data-open="${s.t}">
           <td><span class="star ${State.watchlist.includes(s.t)?'on':''}" data-star="${s.t}">★</span></td>
+          <td><span class="cmpbox ${State.compare.includes(s.t)?'on':''}" data-cmp="${s.t}" title="Add to compare">${State.compare.includes(s.t)?'✓':'+'}</span></td>
           <td class="left"><span class="tname">${s.t}</span><span class="tsub">${s.n}</span></td>
           <td>${fmtB(s.mcap,s.mkt)}</td>
           <td>${fmtP(s.price,s.mkt)}</td>
@@ -191,6 +201,7 @@ function renderTearsheet(t){
       <span class="sub">${s.flags.filter(f=>f.s==="good").length} positive · ${s.flags.filter(f=>f.s==="warn").length} caution</span>
     </div>
     <span class="star ${State.watchlist.includes(s.t)?'on':''}" data-star="${s.t}" style="font-size:24px;align-self:center">★</span>
+    <button class="watchbtn" data-cmp="${s.t}" style="align-self:center">${State.compare.includes(s.t)?'✓ In compare':'+ Add to compare'}</button>
   </div>
 
   <div class="takeaway">${takeaway(s)}</div>
@@ -466,6 +477,88 @@ function renderSectors(){
   </div>`;
 }
 
+function renderCompare(){
+  if(State.compare.length===0){
+    return `
+    <div class="secintro">
+      <h2>Compare stocks</h2>
+      <p>Pick up to 5 stocks to line up side by side across valuation, growth, cash quality, and balance-sheet metrics. Click the <b>+</b> icon next to any stock in the Stocks tab, or "+ Add to compare" on a tearsheet.</p>
+    </div>
+    <div class="panel" style="text-align:center;padding:50px 20px;color:var(--dim)">No stocks selected yet. Go to the Stocks tab and click + on a few names.</div>`;
+  }
+  const rows = computeRows();
+  const stocks = State.compare.map(t=>rows.find(r=>r.t===t)).filter(Boolean);
+  const colW = `${Math.floor(100/(stocks.length+1))}%`;
+
+  const metricRows = [
+    ["Price", s=>fmtP(s.price,s.mkt)],
+    ["Market cap", s=>fmtB(s.mcap,s.mkt)],
+    ["DCF intrinsic value", s=>fmtP(s.intrinsic,s.mkt)],
+    ["DCF gap", s=>sign(s.mos), s=>clr(s.mos)],
+    ["P/E", s=>s.pe==null?"—":s.pe.toFixed(1)],
+    ["EV/EBITDA", s=>s.evEbitda==null?"—":s.evEbitda.toFixed(1)],
+    ["PEG", s=>s.peg==null?"—":s.peg.toFixed(2)],
+    ["Revenue YoY", s=>sign(s.revG), s=>clr(s.revG)],
+    ["Revenue CAGR 3y", s=>sign(s.revCagr), s=>clr(s.revCagr)],
+    ["FCF YoY", s=>sign(s.fcfG), s=>clr(s.fcfG)],
+    ["FCF CAGR 3y", s=>sign(s.fcfCagr), s=>clr(s.fcfCagr)],
+    ["Net margin", s=>s.nmNow==null?"—":s.nmNow.toFixed(1)+"%"],
+    ["EBITDA margin", s=>s.emNow==null?"—":s.emNow.toFixed(1)+"%"],
+    ["FCF / Net income", s=>s.fcfNi==null?"—":s.fcfNi.toFixed(2), s=>s.fcfNi>=1?"var(--good)":s.fcfNi<0.8?"var(--warn)":"#444"],
+    ["FCF yield", s=>s.fcfYield==null?"—":s.fcfYield.toFixed(1)+"%"],
+    ["ROE", s=>s.roe==null?"—":s.roe.toFixed(0)+"%"],
+    ["ROA", s=>s.roa==null?"—":s.roa.toFixed(0)+"%"],
+    ["Net debt / EBITDA", s=>s.debtToEbitda==null?(s.debt<0?"net cash":"—"):s.debtToEbitda.toFixed(1)+"×"],
+    ["Net debt / Mkt cap", s=>(s.debt/s.mcap*100).toFixed(0)+"%"],
+    ["Health score", s=>s.healthScore, s=>s.healthScore>66?"var(--good)":s.healthScore>40?"var(--neutral)":"var(--warn)"],
+    ["Signal", s=>s.verdict.l, s=>s.verdict.c],
+  ];
+
+  // best-in-row highlighting for the numeric ones (higher = better, except PEG/PE/debt where lower = better)
+  const lowerBetter = new Set(["P/E","EV/EBITDA","PEG","Net debt / EBITDA","Net debt / Mkt cap"]);
+
+  return `
+  <div class="secintro">
+    <h2>Compare stocks</h2>
+    <p>${stocks.length} of 5 selected. Click × to remove, or go to Stocks/tearsheets to add more.</p>
+  </div>
+  <div class="presets" style="margin-bottom:18px">
+    ${stocks.map(s=>`<button class="preset on" data-cmp="${s.t}">${s.t} <span class="n">×</span></button>`).join("")}
+  </div>
+
+  <div style="overflow-x:auto">
+  <table class="grid">
+    <thead><tr>
+      <th class="left" style="width:${colW}">Metric</th>
+      ${stocks.map(s=>`<th class="left" style="width:${colW}"><span class="tname" style="cursor:pointer" data-open="${s.t}">${s.t}</span><span class="tsub">${s.n}</span></th>`).join("")}
+    </tr></thead>
+    <tbody>
+      ${metricRows.map(([label,fn,colorFn])=>`
+        <tr>
+          <td class="left" style="color:var(--dim);font-size:12.5px">${label}</td>
+          ${stocks.map(s=>`<td class="left" style="font-weight:700;${colorFn?`color:${colorFn(s)}`:''}">${fn(s)}</td>`).join("")}
+        </tr>`).join("")}
+    </tbody>
+  </table>
+  </div>
+
+  <div class="panelgrid" style="margin-top:18px">
+    <div class="panel wide">
+      <div class="panelhead"><span class="panelt">Revenue trend (annual)</span><span class="panels">overlaid, last 4 years</span></div>
+      ${svgLineChart(stocks.map((s,i)=>({color:CMP_COLORS[i%CMP_COLORS.length],data:s.annual.revenue})), stocks[0]?.annual.periods||[])}
+      <div class="legend">${stocks.map((s,i)=>`<span class="legitem"><i style="background:${CMP_COLORS[i%CMP_COLORS.length]}"></i>${s.t}</span>`).join("")}</div>
+    </div>
+    <div class="panel wide">
+      <div class="panelhead"><span class="panelt">Free cash flow trend (annual)</span><span class="panels">overlaid, last 4 years</span></div>
+      ${svgLineChart(stocks.map((s,i)=>({color:CMP_COLORS[i%CMP_COLORS.length],data:s.annual.fcf})), stocks[0]?.annual.periods||[])}
+      <div class="legend">${stocks.map((s,i)=>`<span class="legitem"><i style="background:${CMP_COLORS[i%CMP_COLORS.length]}"></i>${s.t}</span>`).join("")}</div>
+    </div>
+  </div>
+  <p class="hint">Note: charts overlay raw values across markets/currencies — comparing US (USD bn) and India (INR cr) trend shapes is fine, but absolute scale differs. Use the metric table above for cross-market comparisons.</p>
+  `;
+}
+const CMP_COLORS=["#0e6e5c","#6d5dd3","#c0392b","#b8860b","#2563eb"];
+
 function renderWatchDrawer(){
   if(!State.showWatchlist) return "";
   const rows = computeRows().filter(s=>State.watchlist.includes(s.t));
@@ -483,7 +576,7 @@ function render(){
     ${renderHeader()}
     <div class="wrap">
       ${renderWatchDrawer()}
-      ${State.tab==="sectors" ? renderSectors() : (State.sel ? renderTearsheet(State.sel) : renderScreener())}
+      ${State.tab==="sectors" ? renderSectors() : State.tab==="compare" ? renderCompare() : (State.sel ? renderTearsheet(State.sel) : renderScreener())}
     </div>
   `;
   wireEvents();
@@ -503,12 +596,13 @@ function wireEvents(){
   const searchBox=document.getElementById("searchBox");
   if(searchBox){ searchBox.oninput=e=>{State.q=e.target.value;render();}; searchBox.focus(); searchBox.setSelectionRange(State.q.length,State.q.length); }
 
-  root.querySelectorAll("[data-open]").forEach(el=>el.onclick=(e)=>{ if(e.target.closest('[data-star]'))return; State.sel=el.dataset.open;State.kpiExpanded=false;render();});
+  root.querySelectorAll("[data-open]").forEach(el=>el.onclick=(e)=>{ if(e.target.closest('[data-star]')||e.target.closest('[data-cmp]'))return; State.sel=el.dataset.open;State.kpiExpanded=false;render();});
   root.querySelectorAll("[data-opensector]").forEach(el=>el.onclick=()=>{ if(el.dataset.opensector){State.sel=el.dataset.opensector;State.tab="stocks";render();}});
   const backBtn=document.getElementById("backBtn");
   if(backBtn) backBtn.onclick=()=>{State.sel=null;render();};
 
   root.querySelectorAll("[data-star]").forEach(el=>el.onclick=(e)=>{e.stopPropagation();toggleWatch(el.dataset.star);});
+  root.querySelectorAll("[data-cmp]").forEach(el=>el.onclick=(e)=>{e.stopPropagation();toggleCompare(el.dataset.cmp);});
 
   const kpiToggle=document.getElementById("kpiToggle");
   if(kpiToggle) kpiToggle.onclick=()=>{State.kpiExpanded=!State.kpiExpanded;render();};
