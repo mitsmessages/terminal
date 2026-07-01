@@ -42,6 +42,16 @@ fetch("data.json").then(r=>r.ok?r.json():Promise.reject()).then(d=>{
   if(Array.isArray(d)&&d.length){ State.data=d; State.live=true; render(); }
 }).catch(()=>{});
 
+let MACRO_DATA = null;
+fetch("macro.json").then(r=>r.ok?r.json():Promise.reject()).then(d=>{
+  MACRO_DATA = d; render();
+}).catch(()=>{ /* fine — macro panel just won't show live numbers yet */ });
+
+let REACTIONS_DATA = [];
+fetch("reactions.json").then(r=>r.ok?r.json():Promise.reject()).then(d=>{
+  if(Array.isArray(d)) REACTIONS_DATA = d; render();
+}).catch(()=>{ /* fine — track record panel shows a setup message instead */ });
+
 function computeRows(){
   return State.data.map(s=>{
     const intrinsic = dcf(normalize(s), {discount:State.discount, termGrowth:State.termGrowth, years:10});
@@ -206,6 +216,7 @@ function renderTearsheet(t){
   </div>
 
   <div class="takeaway">${takeaway(s)}</div>
+  ${renderIntegratedVerdict(s, rows)}
 
   <div class="kpiCore">
     ${coreKpis.map(([l,v])=>`<div class="kpi"><div class="kpiV">${v}</div><div class="kpiL">${l}</div></div>`).join("")}
@@ -215,8 +226,14 @@ function renderTearsheet(t){
     ${extraKpis.map(([l,v])=>`<div class="kpi"><div class="kpiV">${v}</div><div class="kpiL">${l}</div></div>`).join("")}
   </div>
 
+  <div class="panelgrid" style="margin-top:14px">
+    ${renderMacroPanel(s)}
+    ${renderValuationPanel(s, rows)}
+  </div>
+
   ${renderAskClaude(s)}
   ${renderEarningsSentiment(s)}
+  ${renderTrackRecord(s)}
 
   <div class="viewtoggle">
     <button data-view="annual" class="${!isQ?'on':''}">Annual</button>
@@ -362,6 +379,22 @@ function buildPrompt(s, depth){
   return `You are a senior equity analyst writing an independent research brief for a non-expert investor. Use ONLY the data below — do not invent facts you can't derive from it. Use these exact section headers in CAPS:\n\n${sections}\n\n${depth==="full"?"450-650 words.":"200-300 words."} Data:\n${JSON.stringify(data)}`;
 }
 
+/* ---------- EDGAR transcript store (loaded once at startup) ---------- */
+let EDGAR_DATA = {};  // ticker → {quarters:[{date,text,key_sections,url},...]}
+fetch("edgar_transcripts.json").then(r=>r.ok?r.json():Promise.reject())
+  .then(d=>{
+    if(Array.isArray(d)) d.forEach(rec=>{ if(rec.ticker) EDGAR_DATA[rec.ticker]=rec; });
+    console.log("EDGAR: loaded",Object.keys(EDGAR_DATA).length,"companies");
+  }).catch(()=>{});  // silently fine if file doesn't exist yet
+
+function getEdgarText(ticker){
+  const rec = EDGAR_DATA[ticker];
+  if(!rec || !rec.quarters || !rec.quarters.length) return null;
+  return rec.quarters.map(q=>
+    `[${q.date}]\n${q.key_sections||q.text||""}`
+  ).join("\n\n---NEXT CALL---\n\n");
+}
+
 function buildEarningsPrompt(s, transcriptText){
   const data={ticker:s.t,name:s.n,sector:s.sec,
     recentRevenueYoY:s.revG, recentFcfYoY:s.fcfG, recentMarginTrend:s.marginTrend,
@@ -384,17 +417,33 @@ ${transcriptText || "[paste the earnings call transcript here before sending —
 }
 
 function renderEarningsSentiment(s){
+  const edgarRec = EDGAR_DATA[s.t];
+  const hasEdgar = edgarRec && edgarRec.quarters && edgarRec.quarters.length > 0;
+  const edgarStatus = hasEdgar
+    ? `<span style="color:var(--good);font-size:12px">✓ ${edgarRec.quarters.length} quarters of EDGAR filings loaded automatically</span>`
+    : s.mkt==="IN"
+      ? `<span style="color:var(--dim);font-size:12px">Indian stocks are not on SEC EDGAR. Find concall transcripts on <a href="https://www.screener.in/company/${s.t}/" target="_blank" style="color:var(--accent)">Screener.in</a> or <a href="https://www.bseindia.com/stock-share-price/${s.t}/" target="_blank" style="color:var(--accent)">BSE India</a> and paste below.</span>`
+      : `<span style="color:var(--neutral);font-size:12px">Run <code>python fetch_edgar.py</code> locally to auto-populate this — or paste a transcript manually below.</span>`;
   return `
   <div class="askbox" style="background:linear-gradient(135deg,#f3eefc,#ece4fa);border-color:#d8c8f2">
     <div class="askhead">
       <div>
         <div class="asktitle" style="color:#6d3dd3">◆ Earnings call sentiment</div>
-        <div class="asksub">Paste one or more recent transcripts below (separate multiple with <code>---NEXT CALL---</code> to track sentiment trend over quarters). Builds a scoring prompt and opens claude.ai — free, no API key. No bulk transcript source exists for free, so this works one stock at a time, on demand.</div>
+        <div class="asksub">Analyzes the tone, guidance language, and management confidence from official earnings filings. Compares management's words against ${s.t}'s actual numbers — the mismatch is the real signal.</div>
       </div>
     </div>
-    <textarea id="transcriptBox" placeholder="Paste earnings call transcript(s) here, or leave blank to get a prompt with search instructions..." style="width:100%;min-height:90px;margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;font-family:var(--sans);font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
+    <div style="margin:10px 0 6px">${edgarStatus}</div>
+    ${hasEdgar ? `
+    <div style="font-size:12px;color:var(--dim);margin-bottom:8px">
+      Quarters: ${edgarRec.quarters.map(q=>`<a href="${q.url}" target="_blank" style="color:var(--accent);margin-right:8px">${q.date}</a>`).join("")}
+    </div>` : ""}
+    <textarea id="transcriptBox" placeholder="${hasEdgar
+      ? "EDGAR text loaded above — edit or add the Q&A section if you have it, then analyze."
+      : "Paste earnings call transcript(s) here (separate multiple with ---NEXT CALL--- to track sentiment trend)…"
+    }" style="width:100%;min-height:${hasEdgar?'60px':'90px'};margin:6px 0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;font-family:var(--sans);font-size:13px;box-sizing:border-box;resize:vertical"></textarea>
     <div class="askbtns">
       <button class="askbtn" style="background:#6d3dd3" data-earnings="${s.t}">Analyze sentiment →</button>
+      ${hasEdgar?`<button class="askbtn secondary" style="border-color:#6d3dd3;color:#6d3dd3" data-edgarfill="${s.t}">Load EDGAR text into box</button>`:""}
     </div>
     <div class="askdone" id="earningsDone">✓ Prompt copied — claude.ai opened in a new tab. Paste (Ctrl/Cmd+V) and press enter.</div>
   </div>`;
@@ -405,7 +454,9 @@ async function handleEarnings(ticker){
   const s = rows.find(r=>r.t===ticker);
   if(!s) return;
   const box = document.getElementById("transcriptBox");
-  const text = box ? box.value.trim() : "";
+  let text = box ? box.value.trim() : "";
+  // If box is empty, auto-inject EDGAR text
+  if(!text){ const edgarText=getEdgarText(ticker); if(edgarText) text=edgarText; }
   const prompt = buildEarningsPrompt(s, text);
   try{ await navigator.clipboard.writeText(prompt); }
   catch(e){
@@ -415,6 +466,151 @@ async function handleEarnings(ticker){
   window.open("https://claude.ai/new", "_blank");
   const done=document.getElementById("earningsDone");
   if(done) done.classList.add("show");
+}
+
+/* ============================================================
+   INTEGRATED VERDICT — combines fundamentals + macro + valuation
+   context into one synthesized read, with explicit caveats.
+   This is the "so what" that ties every layer together instead
+   of leaving you to mentally combine six separate panels.
+   ============================================================ */
+function renderIntegratedVerdict(s, allRows){
+  const macro = macroRead(s, MACRO_DATA);
+  const val = valuationContext(s, allRows, MACRO_DATA);
+
+  const layers = [];
+  // Layer 1: fundamentals (from signal engine)
+  layers.push({
+    label:"Fundamentals", verdict:s.verdict.l, color:s.verdict.c,
+    detail:`${s.flags.filter(f=>f.s==="good").length} positive signals, ${s.flags.filter(f=>f.s==="warn").length} caution flags.`
+  });
+  // Layer 2: macro
+  if(macro){
+    layers.push({label:"Macro environment", verdict:macro.verdict.l, color:macro.verdict.c,
+      detail: macro.notes.length ? macro.notes[0].txt : "No strong macro signal detected for this sector right now."});
+  } else {
+    layers.push({label:"Macro environment", verdict:"Not loaded", color:"#999",
+      detail:"Run fetch_macro.py to activate live macro context (free, no API key)."});
+  }
+  // Layer 3: valuation in context
+  if(val.peVsSector!=null){
+    const cheap = val.peVsSector < -15, rich = val.peVsSector > 15;
+    layers.push({label:"Valuation vs peers", verdict: cheap?"Cheap vs sector":rich?"Rich vs sector":"In line with sector",
+      color: cheap?"#1a8a63":rich?"#c0392b":"#b8860b",
+      detail:`P/E is ${Math.abs(val.peVsSector).toFixed(0)}% ${val.peVsSector<0?"below":"above"} the ${s.sec} sector median (${val.peerCount} peers compared).`});
+  }
+
+  // Overall synthesis: count how many layers agree
+  const positive = layers.filter(l=>["Constructive","Macro tailwind","Cheap vs sector"].includes(l.verdict)).length;
+  const negative = layers.filter(l=>["Caution","Macro headwind","Rich vs sector"].includes(l.verdict)).length;
+  let overall, overallColor, overallCaveat;
+  if(positive>=2 && negative===0){ overall="Multiple layers aligned positively"; overallColor="#1a8a63";
+    overallCaveat="Fundamentals, macro, and valuation are pointing the same direction — the strongest setup, but still verify against the primary sources below before acting."; }
+  else if(negative>=2 && positive===0){ overall="Multiple layers aligned negatively"; overallColor="#c0392b";
+    overallCaveat="Fundamentals, macro, and valuation are pointing the same direction — worth understanding why before assuming it's a buying opportunity."; }
+  else { overall="Layers disagree — mixed picture"; overallColor="#b8860b";
+    overallCaveat="Fundamentals, macro, and valuation aren't telling the same story. This is common and not necessarily bad — it just means no single factor should drive the decision alone."; }
+
+  return `
+  <div class="matrix" style="margin-top:16px">
+    <div class="matrixhead">INTEGRATED VERDICT · fundamentals + macro + valuation combined</div>
+    <div style="padding:14px 18px">
+      <div style="font-weight:800;font-size:15px;color:${overallColor};margin-bottom:6px">${overall}</div>
+      <p style="font-size:12.5px;color:var(--dim);margin:0 0 14px;line-height:1.5">${overallCaveat}</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${layers.map(l=>`
+          <div style="display:flex;align-items:baseline;gap:10px;padding:8px 0;border-top:1px solid var(--line)">
+            <span style="font-size:11px;font-family:var(--mono);color:var(--dim);width:130px;flex-shrink:0">${l.label}</span>
+            <span style="font-size:12.5px;font-weight:700;color:${l.color};width:150px;flex-shrink:0">${l.verdict}</span>
+            <span style="font-size:12px;color:#444;line-height:1.45">${l.detail}</span>
+          </div>`).join("")}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- macro context panel ---------- */
+function renderMacroPanel(s){
+  const macro = macroRead(s, MACRO_DATA);
+  if(!macro){
+    return `<div class="panel"><div class="panelhead"><span class="panelt">Macro environment</span></div>
+      <p style="font-size:12.5px;color:var(--dim);line-height:1.6">Not loaded yet. Run <code>python fetch_macro.py</code> locally (free, no API key) to activate live rates, crude, and currency context, applied automatically based on ${s.t}'s sector.</p></div>`;
+  }
+  const m = MACRO_DATA.series;
+  const rows = [];
+  if(m.us10y) rows.push(["10Y Treasury yield", `${m.us10y.current}%`, sign(m.us10y.chg90d)+" (90d)"]);
+  if(m.crude) rows.push(["Crude oil (WTI)", `$${m.crude.current}`, sign(m.crude.chg90d)+" (90d)"]);
+  if(s.mkt==="IN" && m.usdinr) rows.push(["USD/INR", `₹${m.usdinr.current}`, sign(m.usdinr.chg90d)+" (90d)"]);
+  if(m.vix) rows.push(["VIX", m.vix.current, m.vix.current>25?"elevated fear":m.vix.current<15?"calm":"normal"]);
+  return `
+  <div class="panel">
+    <div class="panelhead"><span class="panelt">Macro environment</span><span class="panels" style="color:${macro.verdict.c}">${macro.verdict.l}</span></div>
+    <div class="kv">
+      ${rows.map(([k,v,sub])=>`<div class="kvrow"><span class="kvk">${k}</span><span class="kvv">${v} <span style="font-weight:400;color:var(--dim);font-size:11px">${sub}</span></span></div>`).join("")}
+    </div>
+    ${macro.notes.length?`<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+      ${macro.notes.map(n=>`<p style="font-size:12px;line-height:1.5;margin:0;color:${n.dir==='tailwind'?'var(--good)':n.dir==='headwind'?'var(--warn)':'#444'}">${n.dir==='tailwind'?'▲':n.dir==='headwind'?'▼':'•'} ${n.txt}</p>`).join("")}
+    </div>`:`<p style="font-size:12px;color:var(--dim);margin-top:10px">No strong macro signal for ${s.sec} right now.</p>`}
+    <p style="font-size:10.5px;color:var(--dim);margin-top:10px;font-family:var(--mono)">As of ${macro.asOf}</p>
+  </div>`;
+}
+
+/* ---------- valuation in context panel ---------- */
+function renderValuationPanel(s, allRows){
+  const val = valuationContext(s, allRows, MACRO_DATA);
+  return `
+  <div class="panel">
+    <div class="panelhead"><span class="panelt">Valuation in context</span><span class="panels">vs peers &amp; risk-free rate</span></div>
+    <div class="kv">
+      <div class="kvrow"><span class="kvk">P/E vs sector median</span><span class="kvv" style="color:${val.peVsSector==null?'inherit':val.peVsSector<-10?'var(--good)':val.peVsSector>10?'var(--warn)':'inherit'}">${val.peVsSector==null?"—":sign(val.peVsSector)}</span></div>
+      <div class="kvrow"><span class="kvk">Sector median P/E</span><span class="kvv">${val.sectorMedianPE==null?"—":val.sectorMedianPE.toFixed(1)+"× ("+val.peerCount+" peers)"}</span></div>
+      <div class="kvrow"><span class="kvk">FCF yield vs risk-free rate</span><span class="kvv" style="color:${val.fcfYieldSpread==null?'inherit':val.fcfYieldSpread>2?'var(--good)':val.fcfYieldSpread<0?'var(--warn)':'inherit'}">${val.fcfYieldSpread==null?"—":sign(val.fcfYieldSpread)+" pts"}</span></div>
+      <div class="kvrow"><span class="kvk">52-week range position</span><span class="kvv">${val.pricePos==null?"—":val.pricePos.toFixed(0)+"% (0=low, 100=high)"}</span></div>
+    </div>
+    <p style="font-size:11.5px;color:var(--dim);margin-top:12px;line-height:1.5">FCF yield spread compares the cash return you're getting to the "safe" 10-year Treasury yield — a spread above ~2 points means you're being paid extra for equity risk; below zero means bonds currently pay more than this business's cash yield.</p>
+  </div>`;
+}
+
+/* ---------- earnings track record panel ---------- */
+function renderTrackRecord(s){
+  const rec = REACTIONS_DATA.find(r=>r.ticker===s.t);
+  if(!rec || !rec.returns || !rec.returns.length){
+    return `
+    <div class="askbox" style="background:#f7f7f5;border-color:var(--line)">
+      <div class="askhead"><div>
+        <div class="asktitle" style="color:var(--dim)">◆ Earnings track record</div>
+        <div class="asksub">Not loaded yet. After running <code>fetch_edgar.py</code>, run <code>python fetch_reactions.py</code> to compute how ${s.t} actually moved around each of its last 10 earnings dates — independent of any sentiment read, so you can test your own sentiment judgment against what really happened.</div>
+      </div></div>
+    </div>`;
+  }
+  const withExcess = computeExcessReturns(rec, REACTIONS_DATA);
+  const validCount = withExcess.filter(r=>r.forward60d!=null).length;
+  return `
+  <div class="askbox" style="background:#f0f4f8;border-color:#c8d6e5">
+    <div class="askhead"><div>
+      <div class="asktitle" style="color:#2563eb">◆ Earnings track record — what actually happened</div>
+      <div class="asksub">Price behavior around ${s.t}'s last ${withExcess.length} filing dates, independent of any sentiment score. Excess return = stock return minus the average return of its sector peers over the same window — this strips out macro and sector moves so what's left is closer to company-specific reaction. Compare this against your own sentiment read from the panel above; agreement or disagreement is the useful signal.</div>
+    </div></div>
+    <div style="overflow-x:auto;margin-top:10px">
+    <table class="grid" style="border:none">
+      <thead><tr>
+        ${["Filing date","Price then","1-day move","60-day fwd","90-day fwd","60-day excess*"].map(h=>`<th class="${h==='Filing date'?'left':''}" style="font-size:10px">${h}</th>`).join("")}
+      </tr></thead>
+      <tbody>
+        ${withExcess.map(r=>`
+          <tr>
+            <td class="left">${r.date}</td>
+            <td>${r.priceAtFiling==null?"—":fmtP(r.priceAtFiling,s.mkt)}</td>
+            <td style="color:${clr(r.reaction1d)}">${sign(r.reaction1d)}</td>
+            <td style="color:${clr(r.forward60d)}">${sign(r.forward60d)}</td>
+            <td style="color:${clr(r.forward90d)}">${sign(r.forward90d)}</td>
+            <td style="color:${clr(r.excess60d)};font-weight:700">${r.excess60d==null?"—":sign(r.excess60d)}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>
+    </div>
+    <p style="font-size:10.5px;color:var(--dim);margin-top:10px;line-height:1.5">*Excess return needs peer data for ${s.sec} in the same reactions.json file to compute — if it shows "—", run the full-universe fetch so sector peers are available for comparison. ${validCount<withExcess.length?`Some dates are missing forward price data (too recent, less than 60/90 days old yet).`:""} This is descriptive, not predictive — it shows what happened after past calls, not a guarantee of what will happen after the next one, and 60-90 day windows are still influenced by company-specific news beyond the earnings call itself.</p>
+  </div>`;
 }
 
 function renderAskClaude(s){
@@ -681,6 +877,10 @@ function wireEvents(){
 
   root.querySelectorAll("[data-ask]").forEach(el=>el.onclick=()=>handleAsk(el.dataset.tk, el.dataset.ask));
   root.querySelectorAll("[data-earnings]").forEach(el=>el.onclick=()=>handleEarnings(el.dataset.earnings));
+  root.querySelectorAll("[data-edgarfill]").forEach(el=>el.onclick=()=>{
+    const box=document.getElementById("transcriptBox");
+    if(box){ const t=getEdgarText(el.dataset.edgarfill); if(t) box.value=t; box.focus(); }
+  });
 
   root.querySelectorAll("[data-driver]").forEach(el=>el.onclick=()=>{State.driverDir[el.dataset.driver]=el.dataset.dir;render();});
   root.querySelectorAll("[data-phase]").forEach(el=>el.onclick=()=>{State.phase=+el.dataset.phase;render();});

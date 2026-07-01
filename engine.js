@@ -247,7 +247,133 @@ function analyze(raw, intrinsic){
     ))) };
 }
 
-/* ---------- one-line plain-English takeaway per stock ---------- */
+/* ============================================================
+   MACRO SENSITIVITY — how each sector/stock is exposed to the
+   handful of macro variables that actually move 60-90 day returns.
+   Applied automatically once macro.json loads; no manual toggling.
+   ============================================================ */
+const MACRO_SENSITIVITY = {
+  // sector label -> exposure map. Each value: -2 (strong headwind when
+  // driver rises) .. +2 (strong tailwind when driver rises)
+  "Technology":            {rates:-2, crude:0,  usdStrength:-1, ratesNote:"long-duration cash flows, hit hardest by rising discount rates"},
+  "Tech":                  {rates:-2, crude:0,  usdStrength:-1, ratesNote:"long-duration cash flows, hit hardest by rising discount rates"},
+  "Financial Services":    {rates:1,  crude:0,  usdStrength:0,  ratesNote:"higher rates can widen lending margins, but too-fast rises hurt credit"},
+  "Fin":                   {rates:1,  crude:0,  usdStrength:0,  ratesNote:"higher rates can widen lending margins, but too-fast rises hurt credit"},
+  "Energy":                {rates:0,  crude:2,  usdStrength:-1, ratesNote:"earnings track crude directly"},
+  "Consumer":              {rates:-1, crude:-1, usdStrength:0,  ratesNote:"discretionary spending softens as rates rise"},
+  "Cons":                  {rates:-1, crude:-1, usdStrength:0,  ratesNote:"discretionary spending softens as rates rise"},
+  "Health":                {rates:0,  crude:0,  usdStrength:1,  ratesNote:"defensive, largely rate-insensitive; exporters gain from weak home currency"},
+  "Comm":                  {rates:-1, crude:0,  usdStrength:0,  ratesNote:"capital-intensive, moderately rate-sensitive"},
+  "Indus":                 {rates:-1, crude:-1, usdStrength:-1, ratesNote:"capex-driven, sensitive to borrowing costs and input costs"},
+};
+function macroSensitivityFor(sec){ return MACRO_SENSITIVITY[sec] || {rates:0,crude:0,usdStrength:0,ratesNote:"no strong macro sensitivity profile on file for this sector"}; }
+
+/* Given live macro.json series + a stock's sector, produce a plain read */
+function macroRead(stock, macro){
+  if(!macro || !macro.series) return null;
+  const sens = macroSensitivityFor(stock.sec);
+  const us10y = macro.series.us10y;
+  const crude = macro.series.crude;
+  const usdinr = macro.series.usdinr;
+  const dxy = macro.series.dxy;
+  const vix = macro.series.vix;
+
+  const notes = [];
+  let score = 0; // net macro tailwind(+)/headwind(-) score
+
+  if(us10y && us10y.chg90d!=null){
+    const ratesRising = us10y.chg90d > 3;
+    const ratesFalling = us10y.chg90d < -3;
+    if(ratesRising && sens.rates!==0){
+      score += sens.rates<0 ? -1 : 1;
+      notes.push({dir: sens.rates<0?"headwind":"tailwind",
+        txt:`10-year yield up ${us10y.chg90d}% over 90 days — ${sens.ratesNote}.`});
+    } else if(ratesFalling && sens.rates!==0){
+      score += sens.rates<0 ? 1 : -1;
+      notes.push({dir: sens.rates<0?"tailwind":"headwind",
+        txt:`10-year yield down ${Math.abs(us10y.chg90d)}% over 90 days — eases the pressure that normally hits ${stock.sec.toLowerCase()} names.`});
+    }
+  }
+  if(crude && crude.chg90d!=null && sens.crude!==0){
+    const crudeUp = crude.chg90d > 5, crudeDown = crude.chg90d < -5;
+    if(crudeUp){ score += sens.crude>0?1:-1;
+      notes.push({dir:sens.crude>0?"tailwind":"headwind", txt:`Crude up ${crude.chg90d}% over 90 days.`}); }
+    else if(crudeDown){ score += sens.crude>0?-1:1;
+      notes.push({dir:sens.crude>0?"headwind":"tailwind", txt:`Crude down ${Math.abs(crude.chg90d)}% over 90 days — input-cost relief.`}); }
+  }
+  if(usdinr && usdinr.chg90d!=null && stock.mkt==="IN"){
+    const inrWeaker = usdinr.chg90d > 1; // INR depreciated vs USD
+    if(inrWeaker && sens.usdStrength!==0){
+      score += sens.usdStrength>0?1:-1;
+      notes.push({dir:sens.usdStrength>0?"tailwind":"headwind",
+        txt:`Rupee weakened ${usdinr.chg90d}% vs USD over 90 days — ${sens.usdStrength>0?"margin tailwind for exporters":"cost headwind for importers"}.`});
+    }
+  }
+  if(vix && vix.current!=null){
+    if(vix.current > 25) notes.push({dir:"caution", txt:`VIX at ${vix.current} — elevated market fear; even good stocks get pulled down in broad risk-off moves.`});
+    else if(vix.current < 15) notes.push({dir:"neutral", txt:`VIX at ${vix.current} — calm market, stock-specific factors likely to dominate over macro noise.`});
+  }
+
+  const verdict = score>=2?{l:"Macro tailwind",c:"#1a8a63"}:score<=-2?{l:"Macro headwind",c:"#c0392b"}:{l:"Macro neutral",c:"#b8860b"};
+  return {score, notes, verdict, asOf: macro.asOf};
+}
+
+/* ============================================================
+   VALUATION IN CONTEXT — is this multiple actually cheap/expensive,
+   relative to the stock's own history and its sector peers (not
+   just an absolute number with no reference point).
+   ============================================================ */
+function valuationContext(stock, allStocks, macro){
+  const peers = allStocks.filter(s=>s.sec===stock.sec && s.t!==stock.t && s.pe!=null && s.pe>0 && s.pe<200);
+  const peerPEs = peers.map(s=>s.pe).sort((a,b)=>a-b);
+  const sectorMedianPE = peerPEs.length ? peerPEs[Math.floor(peerPEs.length/2)] : null;
+  const peVsSector = (stock.pe!=null && sectorMedianPE) ? (stock.pe/sectorMedianPE-1)*100 : null;
+
+  const riskFreeRate = macro?.series?.us10y?.current ?? null;
+  const fcfYieldSpread = (stock.fcfYield!=null && riskFreeRate!=null) ? stock.fcfYield - riskFreeRate : null;
+
+  const pricePos = stock.pricePos; // already 0-100 within 52wk range
+
+  return { sectorMedianPE, peVsSector, riskFreeRate, fcfYieldSpread, pricePos, peerCount: peers.length };
+}
+
+/* ============================================================
+   EARNINGS TRACK RECORD — reads reactions.json (price behavior
+   around past filing dates) computed independently of any
+   sentiment score, so you can compare your own sentiment read
+   against what the stock actually did, without hindsight bias
+   creeping into the sentiment assignment itself.
+   ============================================================ */
+function computeExcessReturns(tickerReactions, allReactions){
+  // Build sector benchmark: equal-weighted average forward return of
+  // OTHER tickers in the same sector, for each date bucket, using
+  // whatever peer data exists in allReactions (no extra fetching).
+  if(!tickerReactions || !tickerReactions.returns) return [];
+  const sector = tickerReactions.sector;
+  const peers = allReactions.filter(r=>r.sector===sector && r.ticker!==tickerReactions.ticker);
+
+  return tickerReactions.returns.map(r=>{
+    // Sector benchmark = avg forward60d/90d of peers' closest-dated filing
+    const peerVals60 = peers.map(p=>{
+      const closest = (p.returns||[]).find(x=>x.forward60d!=null);
+      return closest ? closest.forward60d : null;
+    }).filter(v=>v!=null);
+    const peerVals90 = peers.map(p=>{
+      const closest = (p.returns||[]).find(x=>x.forward90d!=null);
+      return closest ? closest.forward90d : null;
+    }).filter(v=>v!=null);
+    const bench60 = peerVals60.length ? peerVals60.reduce((a,b)=>a+b,0)/peerVals60.length : null;
+    const bench90 = peerVals90.length ? peerVals90.reduce((a,b)=>a+b,0)/peerVals90.length : null;
+    return {
+      ...r,
+      excess60d: (r.forward60d!=null && bench60!=null) ? +(r.forward60d-bench60).toFixed(2) : null,
+      excess90d: (r.forward90d!=null && bench90!=null) ? +(r.forward90d-bench90).toFixed(2) : null,
+      sectorBench60: bench60!=null ? +bench60.toFixed(2) : null,
+    };
+  });
+}
+
+
 function takeaway(s){
   const bits=[];
   if(s.mos!=null) bits.push(s.mos>15?`trading ${s.mos.toFixed(0)}% below estimated value`:

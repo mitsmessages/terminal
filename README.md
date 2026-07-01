@@ -95,6 +95,77 @@ stock at a time, on demand, when you paste in a transcript yourself. Free
 transcript sources to search: Motley Fool, the company's own investor relations
 page, or Seeking Alpha (some free, most paywalled).
 
+## The complete analysis stack
+
+Each tearsheet now integrates five layers instead of looking at a stock in
+isolation. This is what "sophisticated" actually means here — not more
+numbers, but numbers in the right context.
+
+### 1. Fundamentals (original)
+Revenue, FCF, margins, DCF, the 20-signal engine.
+
+### 2. Macro environment — `fetch_macro.py`
+Free, no API key, via yfinance tickers for US 10-year yield, crude oil,
+USD/INR, VIX, gold, copper. Each stock's sector has a sensitivity profile
+(e.g. Technology is hit hardest by rising rates; Energy tracks crude
+directly) so the macro read is automatically tailored per stock rather
+than a generic "the Fed did X" headline.
+```
+python fetch_macro.py     # ~10 seconds, run daily/weekly
+```
+Writes `macro.json`. The tearsheet's Macro Environment panel and the
+Integrated Verdict pick it up automatically.
+
+### 3. Valuation in context
+Computed entirely client-side from data you already have — no extra
+fetch needed. Compares a stock's P/E to its sector's median (calculated
+across your whole dataset) and its FCF yield to the current risk-free
+rate (10-year Treasury from macro.json). "P/E of 33" becomes "P/E is 15%
+above the sector median" — the reference point that makes a multiple
+meaningful.
+
+### 4. Earnings track record — `fetch_reactions.py`
+Reads the filing dates already in `edgar_transcripts.json`, pulls each
+ticker's price history once (free, yfinance), and computes what the stock
+actually did around each of its last ~10 earnings dates: 1-day reaction,
+60/90-day forward return, and — importantly — the **excess return**
+(stock return minus the average return of its sector peers over the same
+window). Excess return is what's left after removing macro and sector
+moves, so it's a fairer test of company-specific reaction than raw price.
+
+This is descriptive, not predictive: it shows what happened after past
+calls, not a guarantee about the next one. Deliberately built so the
+sentiment score (from the Earnings Call Sentiment panel) is assigned
+independently, without seeing this data first — compare your own read
+against what actually happened afterward, rather than letting hindsight
+bias the score.
+```
+python fetch_edgar.py       # must run first — provides filing dates
+python fetch_reactions.py   # ~1-2 min per 10 tickers
+```
+Writes `reactions.json`.
+
+### 5. Integrated verdict
+Combines all of the above into one synthesized read at the top of each
+tearsheet: fundamentals direction + macro tailwind/headwind + valuation
+vs peers, with an explicit note on whether the layers agree or disagree.
+Layers agreeing is the strongest signal; layers disagreeing is flagged as
+a genuinely mixed picture rather than forced into a false consensus.
+
+### Honest limitations across all of this
+- Macro sensitivity profiles are sector-level generalizations — a specific
+  company can behave differently from its sector (e.g. a debt-free tech
+  company is less rate-sensitive than a leveraged one in the same sector).
+- The excess-return calculation needs multiple companies per sector in
+  `reactions.json` to compute a meaningful peer benchmark — run the full
+  S&P 500 fetch (not just the 3-4 ticker test list) for this to work well.
+- 60-90 day windows are still influenced by company-specific news beyond
+  the earnings call (product launches, lawsuits, M&A) — excess return
+  strips out macro/sector noise, not everything else.
+- None of this predicts the future; it organizes the present and recent
+  past clearly enough that you can form your own judgment faster and with
+  more context than reading the numbers in isolation.
+
 ## "Ask Claude" / "Deep Research" -- free, no API key
 
 These buttons don't call any API and cost nothing to use:
