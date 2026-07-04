@@ -179,6 +179,20 @@ def block(fin, cf):
     return rev, gp, oi, ebitda, ni, ocf, capex, fcf
 
 
+def _div_yield(info, price):
+    """Version-proof dividend yield in PERCENT."""
+    rate = info.get("dividendRate")          # currency per share, unambiguous
+    if rate and price:
+        return round(rate / price * 100, 2)
+    dy = info.get("dividendYield")
+    if not dy:
+        return 0.0
+    # Heuristic: no sane yield is below 0.25% AND expressible as a fraction
+    # ambiguity — if the value is < 0.25 it's almost certainly a fraction
+    # (0.005 = 0.5%), so scale it; otherwise it's already percent.
+    return round(dy * 100, 2) if dy < 0.25 else round(dy, 2)
+
+
 def pull(sym, mkt):
     yq = sym + (".NS" if mkt == "IN" else "")
     tk = yf.Ticker(yq)
@@ -235,7 +249,11 @@ def pull(sym, mkt):
         "pe": info.get("trailingPE"), "fpe": info.get("forwardPE"),
         "pb": info.get("priceToBook"), "ps": info.get("priceToSalesTrailing12Months"),
         "evEbitda": info.get("enterpriseToEbitda"),
-        "divYield": round((info.get("dividendYield") or 0), 2),
+        # B7 fix: yfinance changed dividendYield semantics across versions
+        # (fraction 0.005 vs percent 0.5). Computing it ourselves from
+        # dividendRate / price is version-proof; the raw field is only a
+        # fallback, normalized if it's obviously a fraction.
+        "divYield": _div_yield(info, price),
         "roe": round((info.get("returnOnEquity") or 0) * 100, 2) if info.get("returnOnEquity") else None,
         "roa": round((info.get("returnOnAssets") or 0) * 100, 2) if info.get("returnOnAssets") else None,
         "beta": info.get("beta"),
