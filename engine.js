@@ -923,3 +923,56 @@ function dataIntegrityChecks(s, verifyUS, verifyIN){
   const overall = warnCount>0 ? "Flagged" : checks.some(c=>c.sev==="good") ? "Verified" : "No issues found";
   return { checks, warnCount, overall };
 }
+
+/* ============================================================
+   LENS RECONCILIATION — when Veteran's Lens and the Decision
+   Engine read a stock differently, explain the specific mechanism
+   causing the disagreement and state which lens is more relevant
+   for the decision at hand, rather than leaving the contradiction
+   unexplained.
+   ============================================================ */
+function reconcileLenses(s, P, D, V){
+  const notes = [];
+
+  // 1. Implied growth (Veteran, reverse-DCF vs trailing CAGR) vs the
+  //    primary Valuation pillar (Decision Engine, standard conservative DCF)
+  if(V.impliedGrowth.score>=60 && P.valuation.score<50){
+    const histTxt = V.impliedGrowth.hist!=null ? `${V.impliedGrowth.hist.toFixed(0)}%` : "a very high rate";
+    notes.push({
+      title:`Why Veteran's Lens says "beatable expectations" but Valuation scores weak`,
+      mechanism:`Veteran's Lens compares the growth rate priced in today against ${s.t}'s own trailing FCF CAGR (${histTxt}) — a momentum check against recent history, not a full valuation. The primary DCF instead uses a standard, conservative assumption (10% discount rate, fading to 3% terminal growth over 10 years) and finds the price still asks for more than that conservative case supports.`,
+      moreRelevant:`Weight the primary Valuation pillar more heavily for an actual hold/buy decision — sustaining ${histTxt} growth for a full 10-year DCF window is rare for any company. Read the Veteran signal as "priced below its own recent hot streak," not as "cheap" in an absolute sense.`
+    });
+  }
+
+  // 2. Clean accruals (Veteran, NI vs OCF) vs weak Cash Quality
+  //    pillar (Decision Engine, NI vs FCF = OCF minus capex)
+  if(V.accruals.score>=55 && P.cashQuality.score<45){
+    notes.push({
+      title:`Why accruals look "Clean" but Cash Quality scores weak`,
+      mechanism:`Accruals compares Net Income to Operating Cash Flow — an accounting-credibility check. Cash Quality compares Net Income to Free Cash Flow, which is Operating Cash Flow minus capex. Reported profit here is trustworthy (OCF tracks NI closely), but capex is consuming the cash before it becomes free cash flow shareholders can actually access.`,
+      moreRelevant:`Cash Quality is more relevant for what actually reaches shareholders. Check the capex-intensity figure on the tearsheet — if capex is unusually elevated this year only, this may be a temporary investment phase; if it persists across multiple years, it's a real structural concern the clean-accruals reading alone won't show you.`
+    });
+  }
+
+  // 3. Overall composite vs quadrant disagreement, when neither of the
+  //    specific mechanisms above already explains it
+  const compositeHigh = V.composite>=65, compositeLow = V.composite<48;
+  const quadrantBearish = D.quadrant==="AVOID FOR NOW" || D.quadrant==="TRAP-RISK VALUE";
+  const quadrantBullish = D.quadrant==="PRIME CANDIDATE" || D.quadrant==="QUALITY WATCHLIST";
+  if(compositeHigh && quadrantBearish && notes.length===0){
+    notes.push({
+      title:`Why Veteran's Lens reads well overall but the Decision Engine says avoid`,
+      mechanism:`Veteran's Lens scores six specific business-quality characteristics (steadiness, incremental margins, reinvestment effectiveness, and more) largely independent of today's price. The Decision Engine's quadrant explicitly weighs quality against price attractiveness, plus macro and ownership context layered on top.`,
+      moreRelevant:`The Decision Engine is more relevant for a fresh capital-allocation decision right now — it's the one actually pricing the business, not just characterizing it. Treat Veteran's Lens as telling you this is a business worth tracking, even if today's price isn't the right entry.`
+    });
+  } else if(compositeLow && quadrantBullish && notes.length===0){
+    notes.push({
+      title:`Why the Decision Engine likes this but Veteran's Lens is lukewarm`,
+      mechanism:`The Decision Engine's quality composite can score well on recent-period pillars (growth, margins, returns) even when the Veteran lenses — which specifically probe durability across a longer window (steadiness, worst-year resilience, reinvestment effectiveness) — see less consistency underneath.`,
+      moreRelevant:`Weight Veteran's Lens more heavily for a multi-year hold — it's specifically testing whether this period's good numbers are a genuine pattern or a one-off. Open the Veteran's Lens breakdown for this stock and see which specific lens is dragging the composite down before trusting the Decision Engine's more recent-weighted read.`
+    });
+  }
+
+  return notes;
+}

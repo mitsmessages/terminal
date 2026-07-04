@@ -1521,6 +1521,8 @@ function renderDecisionEngine(s){
   const P = pillarScores(s);
   const L = crossLinkages(s, P);
   const D = decisionSynthesis(s, P, L, MACRO_DATA);
+  const V = veteranMetrics(s);
+  const reconciliation = reconcileLenses(s, P, D, V);
   const open = State.decisionOpen;
 
   // quadrant map: x = price attractiveness, y = quality
@@ -1572,6 +1574,7 @@ function renderDecisionEngine(s){
       <button class="learntoggle" data-decision="pillars">${open==='pillars'?'▾':'▸'} Level 2 — Pillar scores &amp; evidence (8)</button>
       <button class="learntoggle" data-decision="linkages" style="margin-left:6px">${open==='linkages'?'▾':'▸'} Level 3 — Cross-linkages (${L.length})</button>
       <button class="learntoggle" data-decision="monitors" style="margin-left:6px">${open==='monitors'?'▾':'▸'} Level 5 — What would change this verdict</button>
+      ${reconciliation.length?`<button class="learntoggle" data-decision="reconcile" style="margin-left:6px;border-color:#6d3dd3;color:#6d3dd3">${open==='reconcile'?'▾':'▸'} ⚖ Veteran's Lens disagrees here — why (${reconciliation.length})</button>`:''}
     </div>
 
     ${open==='pillars'?`
@@ -1605,6 +1608,17 @@ function renderDecisionEngine(s){
     <div style="padding:8px 18px 18px">
       <p style="font-size:12px;color:var(--dim);margin:0 0 10px">These are the metrics currently closest to a verdict boundary — the specific things that would move this stock to a different quadrant if they change:</p>
       ${D.monitors.map(m=>`<div style="border:1px solid var(--line);border-radius:8px;padding:11px 14px;margin-bottom:8px;font-size:12.5px;color:#333;line-height:1.55">⚑ ${m}</div>`).join("")}
+    </div>`:''}
+
+    ${open==='reconcile'?`
+    <div style="padding:8px 18px 18px">
+      <p style="font-size:12px;color:var(--dim);margin:0 0 12px">Veteran's Lens and this Decision Engine sometimes read the same stock differently — not because one is wrong, but because they're built to answer different questions. Here's exactly why, for this stock:</p>
+      ${reconciliation.map(n=>`
+        <div style="border:1px solid #d8c8f2;background:#f8f4ff;border-radius:8px;padding:14px 16px;margin-bottom:10px">
+          <div style="font-weight:700;font-size:13.5px;color:#2d1a5e;margin-bottom:8px">${n.title}</div>
+          <p style="font-size:12.5px;color:#333;line-height:1.6;margin:0 0 8px"><b>What's happening:</b> ${n.mechanism}</p>
+          <p style="font-size:12.5px;color:#2d1a5e;line-height:1.6;margin:0"><b>Which to weight more:</b> ${n.moreRelevant}</p>
+        </div>`).join("")}
     </div>`:''}
   </div>`;
 }
