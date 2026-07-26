@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-07-25 21:12 UTC",
+  "asOf": "2026-07-26 00:15 UTC",
   "series": {
     "us10y": {
       "label": "US 10-Year Treasury Yield",
@@ -44,10 +44,10 @@
     "vix": {
       "label": "VIX (Volatility Index)",
       "unit": "",
-      "current": 18.58,
-      "chg30d": -0.27,
-      "chg90d": -0.69,
-      "level1yPct": 29.1
+      "current": 18.7,
+      "chg30d": -4.05,
+      "chg90d": -0.05,
+      "level1yPct": 29.7
     },
     "gold": {
       "label": "Gold",

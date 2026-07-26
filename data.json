@@ -1826,7 +1826,7 @@
     "debt": -1.69,
     "g": 8.0,
     "pe": 175.15102,
-    "fpe": 38.623997,
+    "fpe": 38.220146,
     "pb": 13.19822,
     "ps": null,
     "evEbitda": 113.407,
@@ -18504,7 +18504,7 @@
     "g": 8.0,
     "pe": 29.082775,
     "fpe": 17.437914,
-    "pb": 11.749819,
+    "pb": 11.536073,
     "ps": 10.449897,
     "evEbitda": null,
     "divYield": 3.82,
@@ -18514,7 +18514,7 @@
     "high52": 190.09,
     "low52": 101.73,
     "insiderPct": 1.06,
-    "prevInsiderPct": 1.08,
+    "prevInsiderPct": null,
     "bsDetail": {
       "totalAssets": [
         47.71,
@@ -33142,7 +33142,7 @@
     "high52": 32.86,
     "low52": 21.28,
     "insiderPct": 0.74,
-    "prevInsiderPct": 0.73,
+    "prevInsiderPct": null,
     "bsDetail": {
       "totalAssets": [
         272.63,
@@ -57551,7 +57551,7 @@
     "high52": 34.92,
     "low52": 21.11,
     "insiderPct": 48.67,
-    "prevInsiderPct": 48.49,
+    "prevInsiderPct": null,
     "bsDetail": {
       "totalAssets": [
         32.37,
@@ -57849,7 +57849,7 @@
     "debt": 6.67,
     "g": 8.0,
     "pe": 30.686274,
-    "fpe": 15.348968,
+    "fpe": 15.771003,
     "pb": 4.358117,
     "ps": null,
     "evEbitda": 12.199,
@@ -70658,7 +70658,7 @@
     "high52": 142.35,
     "low52": 18.97,
     "insiderPct": 14.67,
-    "prevInsiderPct": 14.72,
+    "prevInsiderPct": null,
     "bsDetail": {
       "totalAssets": [
         211.43,
@@ -94683,7 +94683,7 @@
     "high52": 134.88,
     "low52": 61.76,
     "insiderPct": 0.3,
-    "prevInsiderPct": 0.29,
+    "prevInsiderPct": null,
     "bsDetail": {
       "totalAssets": [
         57.12,
@@ -98786,7 +98786,7 @@
     "high52": 8618.28,
     "low52": 5501.01,
     "insiderPct": 5.51,
-    "prevInsiderPct": 5.47,
+    "prevInsiderPct": null,
     "bsDetail": {
       "totalAssets": [
         5.86,
@@ -114066,7 +114066,7 @@
     "high52": 66.14,
     "low52": 36.59,
     "insiderPct": 38.44,
-    "prevInsiderPct": 38.41,
+    "prevInsiderPct": null,
     "bsDetail": {
       "totalAssets": [
         3.14,
@@ -134187,7 +134187,7 @@
     "high52": 312.48,
     "low52": 208.86,
     "insiderPct": 10.62,
-    "prevInsiderPct": 10.54,
+    "prevInsiderPct": null,
     "bsDetail": {
       "totalAssets": [
         1.33,
@@ -135058,7 +135058,7 @@
     "high52": 533.67,
     "low52": 362.5,
     "insiderPct": 0.21,
-    "prevInsiderPct": 0.2,
+    "prevInsiderPct": null,
     "bsDetail": {
       "totalAssets": [
         25.64,
@@ -164500,7 +164500,7 @@
     "debt": -1467.75,
     "g": 8.0,
     "pe": 101.00658,
-    "fpe": 72.42279,
+    "fpe": 73.02223,
     "pb": 19.945536,
     "ps": 11.683957,
     "evEbitda": 80.18,
@@ -170677,7 +170677,7 @@
     "g": 8.0,
     "pe": 46.948296,
     "fpe": 35.14276,
-    "pb": 11.167263,
+    "pb": 11.088165,
     "ps": 4.3022995,
     "evEbitda": 29.942,
     "divYield": 0.53,
@@ -177178,7 +177178,7 @@
     "ev": 70638.99,
     "debt": -386.11,
     "g": 8.0,
-    "pe": 106.01379,
+    "pe": 106.38062,
     "fpe": 45.55514,
     "pb": 9.715893,
     "ps": 10.454061,
@@ -184399,7 +184399,7 @@
     "high52": 1284.7,
     "low52": 750.3,
     "insiderPct": 24.95,
-    "prevInsiderPct": 24.94,
+    "prevInsiderPct": null,
     "bsDetail": {
       "totalAssets": [
         8324.4,
@@ -195965,7 +195965,7 @@
     "debt": 582.95,
     "g": 8.0,
     "pe": 23.863058,
-    "fpe": 22.816687,
+    "fpe": 26.108013,
     "pb": 2.2037976,
     "ps": 6.7787867,
     "evEbitda": -61.983,
@@ -204940,7 +204940,7 @@
     "debt": 2405.83,
     "g": 8.0,
     "pe": 79.34589,
-    "fpe": 64.70104,
+    "fpe": 64.317856,
     "pb": 16.30965,
     "ps": 11.901503,
     "evEbitda": null,
@@ -206660,7 +206660,7 @@
     "ev": 21119.49,
     "debt": -32.43,
     "g": 8.0,
-    "pe": 29.315243,
+    "pe": 29.239233,
     "fpe": 22.784773,
     "pb": 5.0325446,
     "ps": 8.394786,
@@ -231948,9 +231948,9 @@
     "sec": "Consumer Cyclical",
     "ind": "Auto Parts",
     "price": 1127.0,
-    "shares": 57.7467,
-    "mcap": 65080.55,
-    "ev": 67543.68,
+    "shares": 57.7457,
+    "mcap": 65079.38,
+    "ev": 67542.51,
     "debt": 2463.13,
     "g": 8.0,
     "pe": 54.33944,
@@ -244800,7 +244800,7 @@
     "debt": 6190.8,
     "g": 8.0,
     "pe": 37.31848,
-    "fpe": 18.727646,
+    "fpe": 18.708118,
     "pb": 1.4176227,
     "ps": 1.5720237,
     "evEbitda": 7.68,
