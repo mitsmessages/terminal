@@ -631,7 +631,7 @@
   },
   {
     "ticker": "BOSCHLTD",
-    "nseHigh52": 49190.0,
+    "nseHigh52": 50000.0,
     "nseLow52": 28610.0,
     "high52DiffPct": null,
     "low52DiffPct": null
@@ -1759,7 +1759,7 @@
   {
     "ticker": "MCX",
     "nseHigh52": 3480.0,
-    "nseLow52": 1460.8,
+    "nseLow52": 1487.6,
     "high52DiffPct": null,
     "low52DiffPct": null
   },
@@ -2257,7 +2257,7 @@
     "ticker": "WELCORP",
     "nseHigh52": 2443.9,
     "nseLow52": 710.0,
-    "high52DiffPct": null,
+    "high52DiffPct": 5.36,
     "low52DiffPct": null
   },
   {
